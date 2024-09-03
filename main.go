@@ -17,6 +17,7 @@ import (
 var (
 	inputFilePath  = flag.String("input", "", "Path to the input file")
 	outputFilePath = flag.String("output", "", "Path to the output file including the file name")
+	portLimit      = flag.Int("l", 100, "Limit on the number of open ports per IP")
 )
 
 func main() {
@@ -67,7 +68,7 @@ func main() {
 	writer := bufio.NewWriter(file)
 
 	for ip, ports := range ipPortsMap {
-		if len(ports) < 100 {
+		if len(ports) < *portLimit {
 			for _, port := range ports {
 				_, err := writer.WriteString(fmt.Sprintf("%s:%s\n", ip, port))
 				if err != nil {
