@@ -4,20 +4,16 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"net"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
-/*
-此代码用户做处理ip:port的资产
-有的时候主机开放端口过多、可能为蜜罐，若进行漏洞探测等操作会导致资源浪费
-*/
-// 用作处理ip:port列表文件中开放大量端口信息-默认超过100条的不保存
 var (
-	inputFilePath  = flag.String("input", "", "Path to the input file")
-	outputFilePath = flag.String("output", "", "Path to the output file including the file name")
+	inputFilePath  = flag.String("input", "1.txt", "Path to the input file")
+	outputFilePath = flag.String("output", "2.txt", "Path to the output file including the file name")
 	portLimit      = flag.Int("l", 100, "Limit on the number of open ports per IP")
+	mode           = flag.String("mode", "clean", "Mode of operation: 'filter' or 'clean'")
 )
 
 func main() {
@@ -28,12 +24,34 @@ func main() {
 		return
 	}
 
-	file, err := os.Open(*inputFilePath)
+	switch *mode {
+	case "filter":
+		err := filterIPPorts(*inputFilePath, *outputFilePath, *portLimit)
+		if err != nil {
+			fmt.Printf("Error filtering IP ports: %v\n", err)
+		}
+	case "clean":
+		err := cleanIPs(*inputFilePath, *outputFilePath)
+		if err != nil {
+			fmt.Printf("Error cleaning IPs: %v\n", err)
+		}
+	default:
+		fmt.Println("Invalid mode. Please use 'filter' or 'clean'.")
+	}
+}
+
+func filterIPPorts(inputFile, outputFile string, portLimit int) error {
+	file, err := os.Open(inputFile)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return
+		return err
 	}
 	defer file.Close()
+
+	output, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
 
 	scanner := bufio.NewScanner(file)
 	ipPortsMap := make(map[string][]string)
@@ -48,42 +66,75 @@ func main() {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading file:", err)
-		return
+		return err
 	}
 
-	err = os.MkdirAll(filepath.Dir(*outputFilePath), os.ModePerm)
-	if err != nil {
-		fmt.Println("Error creating output folder:", err)
-		return
-	}
-
-	file, err = os.Create(*outputFilePath)
-	if err != nil {
-		fmt.Println("Error creating filtered file:", err)
-		return
-	}
-	defer file.Close()
-
-	writer := bufio.NewWriter(file)
+	writer := bufio.NewWriter(output)
 
 	for ip, ports := range ipPortsMap {
-		if len(ports) < *portLimit {
+		if len(ports) < portLimit {
 			for _, port := range ports {
 				_, err := writer.WriteString(fmt.Sprintf("%s:%s\n", ip, port))
 				if err != nil {
-					fmt.Println("Error writing to file:", err)
-					return
+					return err
 				}
 			}
 		}
 	}
 
-	err = writer.Flush()
+	return writer.Flush()
+}
+func cleanIPs(inputFile, outputFile string) error {
+	file, err := os.Open(inputFile)
 	if err != nil {
-		fmt.Println("Error flushing writer:", err)
-		return
+		return err
+	}
+	defer file.Close()
+
+	output, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	excludeIPs := []string{
+		"114.114.114.114",
+		"8.8.8.8",
+		"0.0.0.1",
+		"0.0.0.0",
+		"127.0.0.1",
+		"1.1.1.1",
+		"114.114.114.114",
 	}
 
-	fmt.Println("Filtered file created successfully at:", *outputFilePath)
+	scanner := bufio.NewScanner(file)
+	writer := bufio.NewWriter(output)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		ip := net.ParseIP(line)
+		if ip == nil || !isPrivateIP(ip) {
+			if isExcludedIP(ip.String(), excludeIPs) {
+				_, err := writer.WriteString(line + "\n")
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return writer.Flush()
+}
+
+func isPrivateIP(ip net.IP) bool {
+	return ip.IsPrivate()
+}
+
+func isExcludedIP(ip string, excludeIPs []string) bool {
+	for _, excludedIP := range excludeIPs {
+		if ip == excludedIP {
+			return false
+		}
+	}
+	return true
 }
