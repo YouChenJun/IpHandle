@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	inputFilePath  = flag.String("input", "1.txt", "Path to the input file")
-	outputFilePath = flag.String("output", "2.txt", "Path to the output file including the file name")
+	inputFilePath  = flag.String("input", "", "Path to the input file")
+	outputFilePath = flag.String("output", "", "Path to the output file including the file name")
 	portLimit      = flag.Int("l", 100, "Limit on the number of open ports per IP")
 	mode           = flag.String("mode", "clean", "Mode of operation: 'filter' or 'clean'")
 )
