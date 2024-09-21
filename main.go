@@ -13,7 +13,7 @@ var (
 	inputFilePath  = flag.String("input", "", "Path to the input file")
 	outputFilePath = flag.String("output", "", "Path to the output file including the file name")
 	portLimit      = flag.Int("l", 100, "Limit on the number of open ports per IP")
-	mode           = flag.String("mode", "clean", "Mode of operation: 'filter' or 'clean'")
+	mode           = flag.String("mode", "clean", "Mode of operation: 'filter', 'clean', or 'quote'")
 )
 
 func main() {
@@ -35,8 +35,13 @@ func main() {
 		if err != nil {
 			fmt.Printf("Error cleaning IPs: %v\n", err)
 		}
+	case "quote":
+		err := addQuotesToIPs(*inputFilePath, *outputFilePath)
+		if err != nil {
+			fmt.Printf("Error adding quotes to IPs: %v\n", err)
+		}
 	default:
-		fmt.Println("Invalid mode. Please use 'filter' or 'clean'.")
+		fmt.Println("Invalid mode. Please use 'filter', 'clean', or 'quote'.")
 	}
 }
 
@@ -137,4 +142,32 @@ func isExcludedIP(ip string, excludeIPs []string) bool {
 		}
 	}
 	return true
+}
+func addQuotesToIPs(inputFile, outputFile string) error {
+	file, err := os.Open(inputFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	output, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	scanner := bufio.NewScanner(file)
+	writer := bufio.NewWriter(output)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		// 添加引号
+		quotedLine := fmt.Sprintf("ip=\"%s\"", line)
+		_, err := writer.WriteString(quotedLine + "\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	return writer.Flush()
 }
