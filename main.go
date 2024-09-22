@@ -13,7 +13,7 @@ var (
 	inputFilePath  = flag.String("input", "", "Path to the input file")
 	outputFilePath = flag.String("output", "", "Path to the output file including the file name")
 	portLimit      = flag.Int("l", 100, "Limit on the number of open ports per IP")
-	mode           = flag.String("mode", "clean", "Mode of operation: 'filter', 'clean', or 'quote'")
+	mode           = flag.String("mode", "", "Mode of operation: 'filter', 'clean', 'quote', 'cidr','cidr-quote'")
 )
 
 func main() {
@@ -30,15 +30,23 @@ func main() {
 		if err != nil {
 			fmt.Printf("Error filtering IP ports: %v\n", err)
 		}
+	//	清除一些内网地址、DSN服务器地址
 	case "clean":
 		err := cleanIPs(*inputFilePath, *outputFilePath)
 		if err != nil {
 			fmt.Printf("Error cleaning IPs: %v\n", err)
 		}
+	//	处理ip资产为fofa语法支持的格式：ip="xx.xx.xx.x"
 	case "quote":
 		err := addQuotesToIPs(*inputFilePath, *outputFilePath)
 		if err != nil {
 			fmt.Printf("Error adding quotes to IPs: %v\n", err)
+		}
+	//	提取资产列表中的C段（大于5条
+	case "cidr":
+		err := extractAndFilterCIDRs(*inputFilePath, *outputFilePath)
+		if err != nil {
+			fmt.Printf("Error extracting and filtering CIDRs: %v\n", err)
 		}
 	default:
 		fmt.Println("Invalid mode. Please use 'filter', 'clean', or 'quote'.")
@@ -170,4 +178,60 @@ func addQuotesToIPs(inputFile, outputFile string) error {
 	}
 
 	return writer.Flush()
+}
+
+/*新增C段提取功能，把出现超过4次的IP提取C段出来*/
+func extractAndFilterCIDRs(inputFile, outputFile string) error {
+	file, err := os.Open(inputFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	output, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	cidrMap := make(map[string]int)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		ipStr := scanner.Text()
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			fmt.Printf("Invalid IP address: %s\n", ipStr)
+			continue
+		}
+		cidr := getCIDR(ipStr)
+		cidrMap[cidr]++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	writer := bufio.NewWriter(output)
+	for cidr, count := range cidrMap {
+		if count >= 5 {
+			_, err := writer.WriteString(cidr + "\n")
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return writer.Flush()
+}
+
+func getCIDR(ipStr string) string {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return ""
+	}
+	ip = ip.To4()
+	if ip == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d.0/24", ip[0], ip[1], ip[2])
 }
